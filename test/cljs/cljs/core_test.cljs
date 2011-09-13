@@ -703,4 +703,6 @@
   (assert (= (take 3 (range 1 0 0)) (list 1 1 1)))
   (assert (= (take 3 (range 3 1 0)) (list 3 3 3)))
 
+  (assert (= 3/2 (/ 3 2)))
+
   :ok)
