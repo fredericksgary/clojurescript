@@ -1,125 +1,188 @@
 (ns cljs.numbers
+  (:require-macros cljs.deffer)
   (:require [goog.math.Integer :as gmathint])
   (:refer-clojure :exclude [+ - * / < > <= >= = quot rem]))
 
-;; Seriously what are we doing here? I mean.
-;; Well.
+;; Questions for dnolen:
+;;
+;;   - doesn't the original dispatch function need to manually check
+;;     the type of the second argument? Maybe first google for
+;;     double-dispatch predicate tower
+;;
+;;     What about having an IAdd protocol as well that dispatches on
+;;     the second type? seems so gross :/
 
-(defprotocol Number
-  (-plus [this other])
-  (-times [this other])
-  (-negate [this])
-  (-invert [this])
-  (-quotient [this other])
-  (-remainder [this other])
-  (-lessThan [this other]))
+(defprotocol INegate
+  (-negate [this]))
 
-;; TODO multimethod?
-(defn bigint
-  [x]
-  (cond (string? x)
-        (gmathint/fromString x)
-        (number? x)
-        (gmathint/fromNumber x)))
+(defprotocol IInvert
+  (-invert [this]))
 
-(declare ratio)
+;; could probably do this with half as many protocols actually...
+(def-binary-protocols
+  IAddDouble -add-double
+  IMultDouble -mult-double
+  IAddInteger -add-integer
+  IMultInteger -mult-integer
+  IAddRatio -add-ratio
+  IMultRatio -mult-ratio)
 
-;; TODO: will have to make these work with any
-;; numeric types, I guess by casting things
-;; around. Actually we probably need a whole
-;; theory of how the types combine.
+;; maybe we could use an (exact?) predicate
 
-(extend-type goog.math.Integer
-  Number
-  (-plus [this other]
-    (.add this other))
-  (-times [this other]
-    (.multiply this other))
-  (-negate [this] (.negate this))
-  (-quotient [this other]
-    (.divide this other))
-  (-remainder [this other]
-    (.modulo this other))
-  (-invert [this] (ratio 1 this))
-  (-lessThan [this other]
-    (.lessThan this other)))
+;; doubles
+(extend-type 'number'
+  IAddDouble
+  (-add-double [this other]
+    ;; TODO: check for promotion
+    (cljs.core/+ this other))
+  IMultDouble
+  (-mult-double [this other]
+    ;; TODO: check for promotion
+    (cljs.core/* this other))
+  IAddInteger
+  (-add-integer [this other]
+    ;; TODO: different behavior if this is an int-double
+    (-add-double this (-make-double other)))
+  IMultInteger
+  (-mult-integer [this other]
+    ;; TODO: different behavior if this is an int-double
+    (+ (-make-integer this) other))
+  IAddRatio
+  (-add-ratio [this other]
+    ;; TODO: different behavior if this is an int-double
+    (+ (-make-ratio this) other))
+  IMultRatio
+  (-mult-ratio [this other]
+    ;; TODO: different behavior if this is an int-double
+    (+ (-make-ratio this) other)))
 
-(defn +
-  ([] (bigint "0"))
-  ([x & xs]
-     (reduce -plus x xs)))
+;; Do we need another set of protocols for comparisons? Probably...
 
-(defn *
-  ([] (bigint "1"))
-  ([x & xs]
-     (reduce -times x xs)))
+;;;
+;;; Old stuff
+;;;
 
-(defn -
-  ([x] (-negate x))
-  ([x y & ys]
-     (+ x (- (apply + y ys)))))
+(comment
 
-;; TODO: Check if there is already an ordered
-;; protocol?
-(defn <
-  ([x] true)
-  ([x y] (-lessThan x y))
-  ([x y z & zs]
-     (every? (partial apply <)
-             (partition 2 1 (list* x y z zs)))))
+  ;; Seriously what are we doing here? I mean.
+  ;; Well.
 
-(defn >
-  [x & ys]
-  (apply < (reverse (list* x ys))))
+  (defprotocol Number
+    (-plus [this other])
+    (-times [this other])
+    (-negate [this])
+    (-invert [this])
+    (-quotient [this other])
+    (-remainder [this other])
+    (-lessThan [this other]))
 
-(defn =
-  ([x] true)
-  ([x y] (and (not (> x y))
-              (not (< x y))))
-  ([x y & ys]
-     (every? (partial = x) (cons y ys))))
+  ;; TODO multimethod?
+  (defn bigint
+    [x]
+    (cond (string? x)
+          (gmathint/fromString x)
+          (number? x)
+          (gmathint/fromNumber x)))
 
-(defn quot
-  [x y]
-  (-quotient x y))
+  (declare ratio)
 
-(defn rem
-  [x y]
-  (-remainder x y))
+  ;; TODO: will have to make these work with any
+  ;; numeric types, I guess by casting things
+  ;; around. Actually we probably need a whole
+  ;; theory of how the types combine.
 
-(defn /
-  ([x] (-invert x))
-  ([x y & ys] (* x (/ (apply * y ys)))))
+  (extend-type goog.math.Integer
+    Number
+    (-plus [this other]
+      (.add this other))
+    (-times [this other]
+      (.multiply this other))
+    (-negate [this] (.negate this))
+    (-quotient [this other]
+      (.divide this other))
+    (-remainder [this other]
+      (.modulo this other))
+    (-invert [this] (ratio 1 this))
+    (-lessThan [this other]
+      (.lessThan this other)))
 
-(defn bigint?
-  [x]
-  (= goog.math.Integer (type x)))
+  (defn +
+    ([] (bigint "0"))
+    ([x & xs]
+       (reduce -plus x xs)))
 
-(defn gcd
-  [a b]
-  {:pre [(bigint? a) (bigint? b)]}
-  (if (< a b)
-    (recur b a)
-    (let [c (rem a b)]
-      (if (= (bigint 0) c)
+  (defn *
+    ([] (bigint "1"))
+    ([x & xs]
+       (reduce -times x xs)))
+
+  (defn -
+    ([x] (-negate x))
+    ([x y & ys]
+       (+ x (- (apply + y ys)))))
+
+  ;; TODO: Check if there is already an ordered
+  ;; protocol?
+  (defn <
+    ([x] true)
+    ([x y] (-lessThan x y))
+    ([x y z & zs]
+       (every? (partial apply <)
+               (partition 2 1 (list* x y z zs)))))
+
+  (defn >
+    [x & ys]
+    (apply < (reverse (list* x ys))))
+
+  (defn =
+    ([x] true)
+    ([x y] (and (not (> x y))
+                (not (< x y))))
+    ([x y & ys]
+       (every? (partial = x) (cons y ys))))
+
+  (defn quot
+    [x y]
+    (-quotient x y))
+
+  (defn rem
+    [x y]
+    (-remainder x y))
+
+  (defn /
+    ([x] (-invert x))
+    ([x y & ys] (* x (/ (apply * y ys)))))
+
+  (defn bigint?
+    [x]
+    (= goog.math.Integer (type x)))
+
+  (defn gcd
+    [a b]
+    {:pre [(bigint? a) (bigint? b)]}
+    (if (< a b)
+      (recur b a)
+      (let [c (rem a b)]
+        (if (= (bigint 0) c)
           b
           (recur b c)))))
 
-(deftype Ratio [a b] ;; both fields should be bigints
-  IPrintable
-  (-pr-seq [this]
-    (list (str a "/" b)))
-  Number
-  (-plus [this other]
-    (let [a' (. other -a)
-          b' (. other -b)]
-      (new Ratio
-           (+ (* a b') (* b a'))
-           (* b b')))))
+  (deftype Ratio [a b] ;; both fields should be bigints
+    IPrintable
+    (-pr-seq [this]
+      (list (str a "/" b)))
+    Number
+    (-plus [this other]
+      (let [a' (. other -a)
+            b' (. other -b)]
+        (new Ratio
+             (+ (* a b') (* b a'))
+             (* b b')))))
 
-(defn ratio
-  [a b]
-  (let [a (bigint a),
-        b (bigint b),
-        c (gcd a b)]
-    (new Ratio (/ a c) (/ b c))))
+  (defn ratio
+    [a b]
+    (let [a (bigint a),
+          b (bigint b),
+          c (gcd a b)]
+      (new Ratio (/ a c) (/ b c))))
+)
