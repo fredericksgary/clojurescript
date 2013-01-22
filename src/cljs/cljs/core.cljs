@@ -482,6 +482,27 @@
   (-hash [o]
     (goog.getUid o)))
 
+
+(deftype Symbol [s]
+  IFn
+  (-invoke [_ m]
+    (get m s))
+  (-invoke [_ m not-found]
+    (get m s not-found))
+
+  IHash
+  (-hash [_] (hash s)))
+
+(deftype Keyword [s]
+  IFn
+  (-invoke [this m]
+    (get m this))
+  (-invoke [this m not-found]
+    (get m this not-found))
+
+  IHash
+  (-hash [_] (hash s)))
+
 ;;this is primitive because & emits call to array-seq
 (defn inc
   "Returns a number one greater than num."
@@ -1036,12 +1057,10 @@ reduces them without incurring seq initialization"
                 (identical? (.charAt x 0) \uFDD1)))))
 
 (defn ^boolean keyword? [x]
-  (and ^boolean (goog/isString x)
-       (identical? (.charAt x 0) \uFDD0)))
+  (instance? Keyword x))
 
 (defn ^boolean symbol? [x]
-  (and ^boolean (goog/isString x)
-       (identical? (.charAt x 0) \uFDD1)))
+  (instance? Symbol x))
 
 (defn ^boolean number? [n]
   (goog/isNumber n))
@@ -1511,18 +1530,17 @@ reduces them without incurring seq initialization"
   ([name]
      (cond
       (symbol? name) name
-      (keyword? name) (str* "\uFDD1" "'" (subs name 2))
-      :else (str* "\uFDD1" "'" name)))
+      (keyword? name) (Symbol. (.-s name))
+      :else (Symbol. (str* name))))
   ([ns name] (symbol (str* ns "/" name))))
 
 (defn keyword
   "Returns a Keyword with the given namespace and name.  Do not use :
   in the keyword strings, it will be added automatically."
   ([name] (cond (keyword? name) name
-                (symbol? name) (str* "\uFDD0" ":" (subs name 2))
-                :else (str* "\uFDD0" ":" name)))
+                (symbol? name) (Keyword. (.-s name))
+                :else (Keyword. (str* name))))
   ([ns name] (keyword (str* ns "/" name))))
-
 
 
 (defn- equiv-sequential
